@@ -2,7 +2,7 @@
 The group project of COMP 9517 (Cell Tracking and Analysis)
 
 ## Pull Notice
-1. DO NOT upload the image fills, as it is inefficient. Everyone must put their cells' images under the Sequence/ folder.
+1. DO NOT upload the image fills, as it is inefficient. Everyone must put their cells' images under the Sequences/ folder.
 
 ## Task 1 Segment and Track Cells
 ### Task 1-1 Segment all the cells and show their contours in the images as overlays.
