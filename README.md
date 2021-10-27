@@ -2,7 +2,7 @@
 The group project of COMP 9517 (Cell Tracking and Analysis)
 
 ## Pull Notice
-1. DO NOT upload the image fills, as it is inefficient. Everyone must put their cells' images under the Sequences/ folder.
+1. DO NOT upload the image files, as it is inefficient. Everyone must put their cells' images under the Sequences/ folder.
 
 ## Task 1 Segment and Track Cells
 ### Task 1-1 Segment all the cells and show their contours in the images as overlays.
@@ -18,7 +18,7 @@ The group project of COMP 9517 (Cell Tracking and Analysis)
 
 ### Task 2-4 The number of cells that are in the process of dividing
 
-## Usually TODOs
+## Usual TODOs
 Each group can meet with their assigned tutor once per week in Weeks 6-9 during the usual consultation session on Thursdays 7-8pm to discuss progress and get feedback.
 
 ## Final TODOs
