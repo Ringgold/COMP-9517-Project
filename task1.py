@@ -12,7 +12,7 @@ def to_binary_image(input_image: np.array, background_potion = 6):
     input[input < meaningful_range/background_potion] = 0
     return input
 
-def dilate_erode_reduce_noise(input_binary: np.array, kernel = (7,7), iteration = 11):
+def dilate_erode_reduce_noise(input_binary: np.array, kernel = (3,3), iteration = 5):
     '''
     Try Dilate and erode
     1. Dilate the objects first to get rid of the noise inside each objects
@@ -80,9 +80,9 @@ if __name__ == "__main__":
     # Get image root path
     image_src_path = str(Path(__file__).parent.resolve()) + str("\\Sequences")
     # individual image path example
-    path_cell = str(image_src_path + "\\01\\t012.tif")
+    path_cell = str(image_src_path + "\\01\\t000.tif")
     path_seg = str(image_src_path + "\\01_GT\\SEG\\man_seg088.tif")
-    path_tra = str(image_src_path + "\\01_GT\\TRA\\man_track012.tif")
+    path_tra = str(image_src_path + "\\01_GT\\TRA\\man_track013.tif")
     # Read as gray
     cell = cv2.imread(path_cell, cv2.IMREAD_GRAYSCALE)
     cell_seg = cv2.imread(path_seg, -1)
@@ -90,12 +90,21 @@ if __name__ == "__main__":
 
     # Turn into np array first
     cell = np.array(cell)
+    plt.title("cell")
+    plt.imshow(cell, cmap="gray")
+    plt.show()
     # To binary
     cell_binary = to_binary_image(cell)
     # reduce noise
     cell_binary_no_noise = dilate_erode_reduce_noise(cell_binary)
+    plt.title("cell_binary_no_noise")
+    plt.imshow(cell_binary_no_noise, cmap="gray")
+    plt.show()
     # get coutours
     cell_binary_coutour = find_coutours_draw(cell_binary_no_noise)
+    plt.title("cell_binary_coutour")
+    plt.imshow(cell_binary_coutour, cmap="gray")
+    plt.show()
     
     '''
     Get meaningful range of the original image:
