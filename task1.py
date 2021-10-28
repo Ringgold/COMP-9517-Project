@@ -50,6 +50,8 @@ def find_coutours(
         input_binary: np.array, 
         kernel_size_bg = (3, 3),
         iterations_bg = 7,
+        kernel_size_dist_erode = (3, 3),
+        iterations_dist_erode = 3,
         dist_transform_thresh_portion = 0.45
     ):
     '''
@@ -69,19 +71,19 @@ def find_coutours(
     # plt.title("dist_transform")
     # plt.imshow(dist_transform, cmap='gray')
     # plt.show()
-    print(np.max(dist_transform), np.min(dist_transform))
-    ret, sure_fg = cv2.threshold(
-        dist_transform,
-        np.max(dist_transform) * dist_transform_thresh_portion,
-        255,
-        0
-    )
-    print("sure_fg", np.max(sure_fg), np.min(sure_fg))
-    # plt.title("sure_fg")
-    # plt.imshow(sure_fg, cmap='gray')
-    # plt.show()
+    # print(np.max(dist_transform), np.min(dist_transform))
+    # ret, sure_fg = cv2.threshold(
+    #     dist_transform,
+    #     np.max(dist_transform) * dist_transform_thresh_portion,
+    #     255,
+    #     0
+    # )
+    dist_transform_erode = cv2.erode(dist_transform, kernel_size_dist_erode, iterations = iterations_dist_erode)
+    plt.title("dist_transform_erode")
+    plt.imshow(dist_transform_erode, cmap='gray')
+    plt.show()
 
-    sure_fg = np.uint8(sure_fg)  #Convert to uint8 from float
+    sure_fg = np.uint8(dist_transform_erode)  #Convert to uint8 from float
     unknown = cv2.subtract(sure_bg,sure_fg)
     print("unknown", np.max(unknown), np.min(unknown))
     # plt.title("unknown")
@@ -118,8 +120,6 @@ def find_coutours(
     plt.title("Segmented and colored img")
     plt.imshow(colored_segmentation)
     plt.show()
-
-    
 
 if __name__ == "__main__":
     # Get image root path
