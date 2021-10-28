@@ -19,8 +19,9 @@ def dilate_erode_reduce_noise(input_binary: np.array, kernel = (7,7), iteration 
     2. erode the objects with same degree to decrease the size to original state
     '''
     input = input_binary.copy()
-    input = cv2.erode(input, kernel, iterations = iteration)
     input = cv2.dilate(input, kernel, iterations = iteration)
+    input = cv2.erode(input, kernel, iterations = iteration)
+    
     return input
 
 def find_coutours_draw(input_gray: np.array):
