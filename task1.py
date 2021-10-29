@@ -151,13 +151,26 @@ def get_cell_segment_info(path_cell: str):
     output_subfolder_name = "output1-1/"
     plt.savefig(
         output_subfolder_name +\
-            "Cells count_" + str(cell_amount_not_on_borders) + ", " + \
-            "average pixel size_" + str(cell_pixel_size_average) + ", " + path_cell_subfolder + '_' + path_cell_name + '.jpg', 
+            path_cell_subfolder + '_' + path_cell_name + \
+            ", Cells count_" + str(cell_amount_not_on_borders) + ", " + \
+            "average pixel size_" + str(cell_pixel_size_average) + '.jpg', 
         dpi=400, 
         format='jpg', 
         bbox_inches='tight'
     )
     # plt.show()
+
+def format_name_digits(number: int):
+    number_str = '000'
+    if number < 10:
+        number_str = '00' + str(number)
+    elif number >= 10 and number <= 99: 
+        number_str = '0' + str(number)
+    elif number >= 100 and number <= 999:
+        number_str = str(number)
+    else:
+        print("TOO BIG NUMBER for format_name_digits:", number)
+    return number_str
 
 if __name__ == "__main__":
     # Get image root path
@@ -169,11 +182,11 @@ if __name__ == "__main__":
     path_cell = str(image_src_path + path_divide + path_cell_subfolder + path_divide + path_cell_name)
     # Do single image segmenting
     # get_cell_segment_info(path_cell)
-    
+
     # Do batch images segmenting
-    for i in range(10):
+    for i in range(51):
         path_cell_subfolder = "01"
-        path_cell_name = "t00" + str(i) + ".tif"
+        path_cell_name = "t" + format_name_digits(i) + ".tif"
         path_cell = str(image_src_path + path_divide + path_cell_subfolder + path_divide + path_cell_name)
         get_cell_segment_info(path_cell)
     
