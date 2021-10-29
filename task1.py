@@ -45,17 +45,16 @@ def get_reduce_noise_by_opening(input_binary: np.array, kernel_size_opening = (7
     input_opening = cv2.morphologyEx(input_opening, cv2.MORPH_OPEN, kernel, iterations)
     return input_opening
 
-def find_coutours(
+def find_contours(
         input_image: np.array,
         input_binary: np.array, 
         kernel_size_bg = (3, 3),
         iterations_bg = 7,
         kernel_size_dist_erode = (3, 3),
-        iterations_dist_erode = 3,
-        dist_transform_thresh_portion = 0.45
+        iterations_dist_erode = 3
     ):
     '''
-    Find all of the coutours of the input image cell and draw the coutours
+    Find all of the contours of the input image cell and draw the contours
     '''
     # threshold = (np.max(input_gray) - np.min(input_gray))/2
     # input_edges = cv2.Canny(input_gray, threshold, threshold)
@@ -71,13 +70,6 @@ def find_coutours(
     # plt.title("dist_transform")
     # plt.imshow(dist_transform, cmap='gray')
     # plt.show()
-    # print(np.max(dist_transform), np.min(dist_transform))
-    # ret, sure_fg = cv2.threshold(
-    #     dist_transform,
-    #     np.max(dist_transform) * dist_transform_thresh_portion,
-    #     255,
-    #     0
-    # )
     dist_transform_erode = cv2.erode(dist_transform, kernel_size_dist_erode, iterations = iterations_dist_erode)
     plt.title("dist_transform_erode")
     plt.imshow(dist_transform_erode, cmap='gray')
@@ -85,17 +77,22 @@ def find_coutours(
 
     sure_fg = np.uint8(dist_transform_erode)  #Convert to uint8 from float
     unknown = cv2.subtract(sure_bg,sure_fg)
-    print("unknown", np.max(unknown), np.min(unknown))
-    # plt.title("unknown")
-    # plt.imshow(unknown, cmap='gray')
-    # plt.show()
+    plt.title("unknown")
+    plt.imshow(unknown, cmap='gray')
+    plt.show()
 
-    ret2, markers = cv2.connectedComponents(sure_fg)
-    # print("ret2", ret2)
-    # plt.title("markers")
-    # plt.imshow(markers)
-    # plt.show()
+    markers_amount, markers = cv2.connectedComponents(sure_fg)
+    '''
+    cells_amount_not_on_borders:
+    1. The total amount of cells detected in the image without considering the ones on borders
+    2. Need to use markers_amount - 1 since markers_amount includes the background
+    '''
+    cells_amount_not_on_borders = markers_amount - 1
+    plt.title("markers")
+    plt.imshow(markers)
+    plt.show()
 
+    # make sure the markers and 
     markers = markers+10
     max_unkown = np.max(unknown)
     markers[unknown==max_unkown] = 0
@@ -109,17 +106,19 @@ def find_coutours(
     # plt.show()
 
     # watershed boundaries are -1
-    zeros = np.zeros(input_binary.shape, np.uint8)
-    zeros[watershed == -1] = 1
-    plt.title("Coutours")
-    plt.imshow(zeros, cmap='gray')
+    edges = np.zeros(input_binary.shape, np.uint8)
+    edges[watershed == -1] = 1
+    plt.title("contours")
+    plt.imshow(edges, cmap='gray')
     plt.show()
 
     #label2rgb - Return an RGB image where color-coded labels are painted over the image.
     colored_segmentation = color.label2rgb(watershed, bg_label=0)
-    plt.title("Segmented and colored img")
+    plt.title("Segmented and color-labeled img")
     plt.imshow(colored_segmentation)
     plt.show()
+
+    return watershed, edges, colored_segmentation, cells_amount_not_on_borders
 
 if __name__ == "__main__":
     # Get image root path
@@ -152,10 +151,10 @@ if __name__ == "__main__":
     plt.imshow(cell_no_border_cell, cmap="gray")
     plt.show()
 
-    # get coutours
-    cell_binary_coutour = find_coutours(cell_original, cell_no_border_cell)
-    # plt.title("cell_binary_coutour")
-    # plt.imshow(cell_binary_coutour, cmap="gray")
+    # get contours
+    cell_binary_contour = find_contours(cell_original, cell_no_border_cell)
+    # plt.title("cell_binary_contour")
+    # plt.imshow(cell_binary_contour, cmap="gray")
     # plt.show()
     
     '''
@@ -167,9 +166,9 @@ if __name__ == "__main__":
     cell_tra = cv2.imread(path_tra, -1)
     # Check SEG
     # print(cell_seg.shape)
-    # plt.title("cell_seg")
-    # plt.imshow(cell_seg)
-    # plt.show()
+    plt.title("cell_seg")
+    plt.imshow(cell_seg)
+    plt.show()
 
     # Check TRA
     # plt.title("cell_tra")
