@@ -6,6 +6,8 @@ import skimage.segmentation
 from skimage import color
 from pathlib import Path
 
+markers_color_value_offset = 10
+
 def get_binary(input_image: np.array, min_cell_pixel_portion = 1/8, threshold_block_size = 37):
     input = input_image.copy()
     # Get meaningful range
@@ -53,6 +55,7 @@ def find_contours(
         kernel_size_dist_erode = (3, 3),
         iterations_dist_erode = 3
     ):
+    global markers_color_value_offset
     '''
     Find all of the contours of the input image cell and draw the contours
     '''
@@ -71,29 +74,29 @@ def find_contours(
     # plt.imshow(dist_transform, cmap='gray')
     # plt.show()
     dist_transform_erode = cv2.erode(dist_transform, kernel_size_dist_erode, iterations = iterations_dist_erode)
-    plt.title("dist_transform_erode")
-    plt.imshow(dist_transform_erode, cmap='gray')
-    plt.show()
+    # plt.title("dist_transform_erode")
+    # plt.imshow(dist_transform_erode, cmap='gray')
+    # plt.show()
 
     sure_fg = np.uint8(dist_transform_erode)  #Convert to uint8 from float
     unknown = cv2.subtract(sure_bg,sure_fg)
-    plt.title("unknown")
-    plt.imshow(unknown, cmap='gray')
-    plt.show()
+    # plt.title("unknown")
+    # plt.imshow(unknown, cmap='gray')
+    # plt.show()
 
     markers_amount, markers = cv2.connectedComponents(sure_fg)
     '''
-    cells_amount_not_on_borders:
-    1. The total amount of cells detected in the image without considering the ones on borders
+    object_amount_not_on_borders:
+    1. The total amount of objects detected in the image without considering the ones on borders
     2. Need to use markers_amount - 1 since markers_amount includes the background
     '''
-    cells_amount_not_on_borders = markers_amount - 1
-    plt.title("markers")
-    plt.imshow(markers)
-    plt.show()
+    object_amount_not_on_borders = markers_amount - 1
+    # plt.title("markers")
+    # plt.imshow(markers)
+    # plt.show()
 
-    # make sure the markers and 
-    markers = markers+10
+    # make sure the background are not set as 0 and consider as unsured area
+    markers = markers + markers_color_value_offset
     max_unkown = np.max(unknown)
     markers[unknown==max_unkown] = 0
     # plt.title("markers without unknown")
@@ -108,17 +111,32 @@ def find_contours(
     # watershed boundaries are -1
     edges = np.zeros(input_binary.shape, np.uint8)
     edges[watershed == -1] = 1
-    plt.title("contours")
-    plt.imshow(edges, cmap='gray')
-    plt.show()
+    # plt.title("contours")
+    # plt.imshow(edges, cmap='gray')
+    # plt.show()
 
     #label2rgb - Return an RGB image where color-coded labels are painted over the image.
     colored_segmentation = color.label2rgb(watershed, bg_label=0)
-    plt.title("Segmented and color-labeled img")
-    plt.imshow(colored_segmentation)
-    plt.show()
+    # plt.title("Segmented and color-labeled img")
+    # plt.imshow(colored_segmentation)
+    # plt.show()
 
-    return watershed, edges, colored_segmentation, cells_amount_not_on_borders
+    return watershed, edges, colored_segmentation, object_amount_not_on_borders
+
+def get_object_pixel_record(object_color_array):
+    # Get useful pixel values
+    unique_elements = np.unique(object_color_array)
+    unique_elements = unique_elements[unique_elements >= 1] 
+    # initialize the pixel dict
+    object_dict = dict.fromkeys(unique_elements)
+    for key in object_dict:
+        object_dict[key] = 0
+    # for element in unique_elements:
+    #     if element >= 1:
+    #         print(element, np.bincount([element]))
+    #         object_dict[element].append(np.bincount(element))
+    return object_dict
+
 
 if __name__ == "__main__":
     # Get image root path
@@ -131,9 +149,9 @@ if __name__ == "__main__":
 
     # Turn into np array first
     cell = np.array(cell)
-    plt.title("cell")
-    plt.imshow(cell, cmap="gray")
-    plt.show()
+    # plt.title("cell")
+    # plt.imshow(cell, cmap="gray")
+    # plt.show()
 
     # To binary and get its threshold
     cell_binary = get_binary(cell)
@@ -146,29 +164,42 @@ if __name__ == "__main__":
     # plt.show()
 
     # removing border interfered cells
-    cell_no_border_cell = skimage.segmentation.clear_border(cell_no_noise)
-    plt.title("cell_no_border_cell")
-    plt.imshow(cell_no_border_cell, cmap="gray")
-    plt.show()
+    cell_no_border = skimage.segmentation.clear_border(cell_no_noise)
+    # plt.title("cell_no_border")
+    # plt.imshow(cell_no_border, cmap="gray")
+    # plt.show()
 
     # get contours
-    cell_binary_contour = find_contours(cell_original, cell_no_border_cell)
-    # plt.title("cell_binary_contour")
-    # plt.imshow(cell_binary_contour, cmap="gray")
-    # plt.show()
+    cell_watershed, cell_edges, cell_colored_segmentation, cell_amount_not_on_borders = find_contours(cell_original, cell_no_border)
+    # After minus markers_color_value_offset, all of the objects color pixel will have value >= 1
+    cell_watershed = cell_watershed - markers_color_value_offset
+    cell_pixel_dict = get_object_pixel_record(cell_watershed)
+    print(cell_pixel_dict)
+
+    # Print cell detection result for a single image
+    all_figures = plt.figure(figsize = (13,13))
+    titles = ['cell_original','cell_no_border','cell_edges',str("cell_colored_segmentation:" + str(cell_amount_not_on_borders))]
+    images = [cell, cell_no_border, cell_edges, cell_colored_segmentation]
+    for i in range(4):
+        ax1 = all_figures.add_subplot(2,2,i+1)
+        ax1.imshow(images[i])
+        ax1.set_title(titles[i])
+        ax1.set_axis_off()
+    plt.show()
     
     '''
     What do those SEG and TRA look like?
     '''
-    path_seg = str(image_src_path + "\\01_GT\\SEG\\man_seg088.tif")
-    path_tra = str(image_src_path + "\\01_GT\\TRA\\man_track013.tif")
-    cell_seg = cv2.imread(path_seg, -1)
-    cell_tra = cv2.imread(path_tra, -1)
+    # path_seg = str(image_src_path + "\\01_GT\\SEG\\man_seg088.tif")
+    # path_tra = str(image_src_path + "\\01_GT\\TRA\\man_track013.tif")
+    # cell_seg = cv2.imread(path_seg, -1)
+    # cell_tra = cv2.imread(path_tra, -1)
+
     # Check SEG
     # print(cell_seg.shape)
-    plt.title("cell_seg")
-    plt.imshow(cell_seg)
-    plt.show()
+    # plt.title("cell_seg")
+    # plt.imshow(cell_seg)
+    # plt.show()
 
     # Check TRA
     # plt.title("cell_tra")
