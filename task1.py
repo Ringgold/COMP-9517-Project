@@ -125,16 +125,19 @@ def find_contours(
 
 def get_object_pixel_record(object_color_array):
     # Get useful pixel values
-    unique_elements = np.unique(object_color_array)
-    unique_elements = unique_elements[unique_elements >= 1] 
-    # initialize the pixel dict
-    object_dict = dict.fromkeys(unique_elements)
+    unique_objects = np.unique(object_color_array)
+    unique_objects = unique_objects[unique_objects >= 1] 
+
+    # initialize the pixel dict with all object count starting from 0
+    object_dict = dict.fromkeys(unique_objects)
     for key in object_dict:
         object_dict[key] = 0
-    # for element in unique_elements:
-    #     if element >= 1:
-    #         print(element, np.bincount([element]))
-    #         object_dict[element].append(np.bincount(element))
+
+    # get the pixel value count for each object key label
+    for row in object_color_array:
+        for col in row:
+            if col >= 1:
+                object_dict[col] += 1
     return object_dict
 
 
@@ -174,17 +177,20 @@ if __name__ == "__main__":
     # After minus markers_color_value_offset, all of the objects color pixel will have value >= 1
     cell_watershed = cell_watershed - markers_color_value_offset
     cell_pixel_dict = get_object_pixel_record(cell_watershed)
-    print(cell_pixel_dict)
+    cell_pixel_array = [v for _, v in cell_pixel_dict.items() if v >= 0]
+    cell_pixel_size_average = round(sum(cell_pixel_array) / len(cell_pixel_array))
 
     # Print cell detection result for a single image
     all_figures = plt.figure(figsize = (13,13))
-    titles = ['cell_original','cell_no_border','cell_edges',str("cell_colored_segmentation:" + str(cell_amount_not_on_borders))]
+    titles = ['cell_original','cell_no_border','cell_edges','cell_colored_segmentation']
     images = [cell, cell_no_border, cell_edges, cell_colored_segmentation]
     for i in range(4):
         ax1 = all_figures.add_subplot(2,2,i+1)
         ax1.imshow(images[i])
         ax1.set_title(titles[i])
         ax1.set_axis_off()
+    suptitle = "Cells count: " + str(cell_amount_not_on_borders) + ", average pixel size: " + str(cell_pixel_size_average)
+    plt.suptitle(suptitle)
     plt.show()
     
     '''
