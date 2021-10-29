@@ -59,31 +59,12 @@ def find_contours(
     '''
     Find all of the contours of the input image cell and draw the contours
     '''
-    # threshold = (np.max(input_gray) - np.min(input_gray))/2
-    # input_edges = cv2.Canny(input_gray, threshold, threshold)
-    # plt.title("input_edges")
-    # plt.imshow(input_edges, cmap="gray")
-    # plt.show()
     kernel = np.ones(kernel_size_bg, np.uint8)
     sure_bg = cv2.dilate(input_binary, kernel, iterations=iterations_bg)
-    # plt.title("sure_bg")
-    # plt.imshow(sure_bg, cmap="gray")
-    # plt.show()
     dist_transform = cv2.distanceTransform(input_binary,cv2.DIST_MASK_3,5)
-    # plt.title("dist_transform")
-    # plt.imshow(dist_transform, cmap='gray')
-    # plt.show()
     dist_transform_erode = cv2.erode(dist_transform, kernel_size_dist_erode, iterations = iterations_dist_erode)
-    # plt.title("dist_transform_erode")
-    # plt.imshow(dist_transform_erode, cmap='gray')
-    # plt.show()
-
     sure_fg = np.uint8(dist_transform_erode)  #Convert to uint8 from float
     unknown = cv2.subtract(sure_bg,sure_fg)
-    # plt.title("unknown")
-    # plt.imshow(unknown, cmap='gray')
-    # plt.show()
-
     markers_amount, markers = cv2.connectedComponents(sure_fg)
     '''
     object_amount_not_on_borders:
@@ -91,35 +72,20 @@ def find_contours(
     2. Need to use markers_amount - 1 since markers_amount includes the background
     '''
     object_amount_not_on_borders = markers_amount - 1
-    # plt.title("markers")
-    # plt.imshow(markers)
-    # plt.show()
 
     # make sure the background are not set as 0 and consider as unsured area
     markers = markers + markers_color_value_offset
     max_unkown = np.max(unknown)
     markers[unknown==max_unkown] = 0
-    # plt.title("markers without unknown")
-    # plt.imshow(markers, cmap='jet')
-    # plt.show()
 
     watershed = cv2.watershed(input_image, markers)
-    # plt.title("watershed")
-    # plt.imshow(watershed)
-    # plt.show()
 
     # watershed boundaries are -1
     edges = np.zeros(input_binary.shape, np.uint8)
     edges[watershed == -1] = 1
-    # plt.title("contours")
-    # plt.imshow(edges, cmap='gray')
-    # plt.show()
 
     #label2rgb - Return an RGB image where color-coded labels are painted over the image.
     colored_segmentation = color.label2rgb(watershed, bg_label=0)
-    # plt.title("Segmented and color-labeled img")
-    # plt.imshow(colored_segmentation)
-    # plt.show()
 
     return watershed, edges, colored_segmentation, object_amount_not_on_borders
 
@@ -140,21 +106,13 @@ def get_object_pixel_record(object_color_array):
                 object_dict[col] += 1
     return object_dict
 
-
-if __name__ == "__main__":
-    # Get image root path
-    image_src_path = str(Path(__file__).parent.resolve()) + str("\\Sequences")
-    # individual image path example
-    path_cell = str(image_src_path + "\\01\\t000.tif")
+def get_cell_segment_info(path_cell: str):
     # Read as gray
     cell_original = cv2.imread(path_cell)
     cell = cv2.imread(path_cell, cv2.IMREAD_GRAYSCALE)
 
     # Turn into np array first
     cell = np.array(cell)
-    # plt.title("cell")
-    # plt.imshow(cell, cmap="gray")
-    # plt.show()
 
     # To binary and get its threshold
     cell_binary = get_binary(cell)
@@ -162,15 +120,9 @@ if __name__ == "__main__":
     # reduce noise
     cell_binary_opening = get_reduce_noise_by_opening(cell_binary)
     cell_no_noise = cell_binary_opening.copy()
-    # plt.title("cell_no_noise")
-    # plt.imshow(cell_no_noise, cmap="gray")
-    # plt.show()
 
     # removing border interfered cells
     cell_no_border = skimage.segmentation.clear_border(cell_no_noise)
-    # plt.title("cell_no_border")
-    # plt.imshow(cell_no_border, cmap="gray")
-    # plt.show()
 
     # get contours
     cell_watershed, cell_edges, cell_colored_segmentation, cell_amount_not_on_borders = find_contours(cell_original, cell_no_border)
@@ -186,12 +138,44 @@ if __name__ == "__main__":
     images = [cell, cell_no_border, cell_edges, cell_colored_segmentation]
     for i in range(4):
         ax1 = all_figures.add_subplot(2,2,i+1)
-        ax1.imshow(images[i])
+        if i == 3:
+            ax1.imshow(images[i])
+        else:
+            ax1.imshow(images[i], cmap="gray")
         ax1.set_title(titles[i])
         ax1.set_axis_off()
-    suptitle = "Cells count: " + str(cell_amount_not_on_borders) + ", average pixel size: " + str(cell_pixel_size_average)
+    suptitle = "Cells count: " + str(cell_amount_not_on_borders) + ", average pixel size: " + str(cell_pixel_size_average) +\
+        ", img:" + path_cell_subfolder + '.' + path_cell_name
     plt.suptitle(suptitle)
-    plt.show()
+    plt.tight_layout()
+    output_subfolder_name = "output1-1/"
+    plt.savefig(
+        output_subfolder_name +\
+            "Cells count_" + str(cell_amount_not_on_borders) + ", " + \
+            "average pixel size_" + str(cell_pixel_size_average) + ", " + path_cell_subfolder + '_' + path_cell_name + '.jpg', 
+        dpi=400, 
+        format='jpg', 
+        bbox_inches='tight'
+    )
+    # plt.show()
+
+if __name__ == "__main__":
+    # Get image root path
+    image_src_path = str(Path(__file__).parent.resolve()) + str("\\Sequences")
+    # individual image path example\
+    path_divide = "\\"
+    path_cell_subfolder = "01"
+    path_cell_name = "t000.tif"
+    path_cell = str(image_src_path + path_divide + path_cell_subfolder + path_divide + path_cell_name)
+    # Do single image segmenting
+    # get_cell_segment_info(path_cell)
+    
+    # Do batch images segmenting
+    for i in range(10):
+        path_cell_subfolder = "01"
+        path_cell_name = "t00" + str(i) + ".tif"
+        path_cell = str(image_src_path + path_divide + path_cell_subfolder + path_divide + path_cell_name)
+        get_cell_segment_info(path_cell)
     
     '''
     What do those SEG and TRA look like?
