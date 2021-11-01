@@ -6,21 +6,12 @@ import skimage.segmentation
 from skimage import color
 from pathlib import Path
 
-# TODO Create a cell class for each detected cell and record them in the main after each frame (image) is read
 # class Cell
+# color cell
 
 markers_color_value_offset = 10
 
-def get_binary(
-    input_image: np.array, 
-    min_cell_pixel_portion = 1/8, 
-    threshold_block_size = 35
-):
-    '''
-    min_cell_pixel_portion: Decreasing this value will make smaller pixel value chunks considered as cell
-    threshold_block_size: Increasing this value will let larger size of chunk being considered as cell, 
-    but will lose detailed edges at the same time
-    '''
+def get_binary(input_image: np.array, min_cell_pixel_portion = 1/8, threshold_block_size = 37):
     input = input_image.copy()
     # Get meaningful range
     meaningful_range = np.max(input) - np.min(input)
@@ -59,13 +50,15 @@ def get_reduce_noise_by_opening(input_binary: np.array, kernel_size_opening = (7
     input_opening = cv2.morphologyEx(input_opening, cv2.MORPH_OPEN, kernel, iterations)
     return input_opening
 
+from scipy import ndimage as ndi
+from skimage.morphology import watershed
+from skimage.feature import peak_local_max
+
 def find_contours(
         input_image: np.array,
         input_binary: np.array, 
         kernel_size_bg = (3, 3),
-        iterations_bg = 7,
-        kernel_size_dist_erode = (3, 3),
-        iterations_dist_erode = 4
+        iterations_bg = 7
     ):
     global markers_color_value_offset
     '''
@@ -74,35 +67,56 @@ def find_contours(
     kernel = np.ones(kernel_size_bg, np.uint8)
     sure_bg = cv2.dilate(input_binary, kernel, iterations=iterations_bg)
     dist_transform = cv2.distanceTransform(input_binary,cv2.DIST_MASK_3,5)
-    dist_transform_erode = cv2.erode(dist_transform, kernel_size_dist_erode, iterations = iterations_dist_erode)
-    sure_fg = np.uint8(dist_transform_erode)  #Convert to uint8 from float
-    unknown = cv2.subtract(sure_bg,sure_fg)
-    markers_amount, markers = cv2.connectedComponents(
-        sure_fg, 
-        4 # use connectivity of 4 instead of 8 to decrease close cells attaching probability
+    # plt.title("dist_transform")
+    # plt.imshow(dist_transform)
+    # plt.show()
+    coords = peak_local_max(
+        dist_transform, 
+        footprint=np.ones((36, 36), np.uint8)
     )
-    '''
-    object_amount_not_on_borders:
-    1. The total amount of objects detected in the image without considering the ones on borders
-    2. Need to use markers_amount - 1 since markers_amount includes the background
-    '''
-    object_amount_not_on_borders = markers_amount - 1
+    sure_fg = np.zeros(dist_transform.shape, dtype=bool)
+    sure_fg[tuple(coords.T)] = True
+    sure_fg = np.uint8(sure_fg)
+    markers, number_feature = ndi.label(sure_fg)
+    plt.title("markers")
+    plt.imshow(markers)
+    plt.show()
+    ws_labels = skimage.morphology.watershed(-dist_transform, markers, mask=input_binary)
+    plt.title("ws_labels")
+    plt.imshow(ws_labels)
+    plt.show()
 
-    # make sure the background are not set as 0 and consider as unsured area
-    markers = markers + markers_color_value_offset
-    max_unkown = np.max(unknown)
-    markers[unknown==max_unkown] = 0
+    # unknown = cv2.subtract(sure_bg, sure_fg)
+    # plt.title("sure_fg")
+    # plt.imshow(sure_fg)
+    # plt.show()
 
-    watershed = cv2.watershed(input_image, markers)
+    # markers_amount, markers = cv2.connectedComponents(sure_fg)
+    
+    # plt.title("markers")
+    # plt.imshow(markers)
+    # plt.show()
+    # '''
+    # object_amount_not_on_borders:
+    # 1. The total amount of objects detected in the image without considering the ones on borders
+    # 2. Need to use markers_amount - 1 since markers_amount includes the background
+    # '''
+    # object_amount_not_on_borders = markers_amount - 1
 
-    # watershed boundaries are -1
-    edges = np.zeros(input_binary.shape, np.uint8)
-    edges[watershed == -1] = 1
+    # # make sure the background are not set as 0 and consider as unsured area
+    # markers = markers + markers_color_value_offset
+    # max_unkown = np.max(unknown)
+    # markers[unknown==max_unkown] = 0
+    # watershed = cv2.watershed(input_image, markers)
 
-    #label2rgb - Return an RGB image where color-coded labels are painted over the image.
-    colored_segmentation = color.label2rgb(watershed, bg_label=0)
+    # # watershed boundaries are -1
+    # edges = np.zeros(input_binary.shape, np.uint8)
+    # edges[watershed == -1] = 1
 
-    return watershed, edges, colored_segmentation, object_amount_not_on_borders
+    # #label2rgb - Return an RGB image where color-coded labels are painted over the image.
+    # colored_segmentation = color.label2rgb(watershed, bg_label=0)
+
+    # return watershed, edges, colored_segmentation, object_amount_not_on_borders
 
 def get_object_pixel_record(object_color_array):
     # Get useful pixel values
@@ -137,45 +151,43 @@ def get_cell_segment_info(path_cell: str):
     cell_no_noise = cell_binary_opening.copy()
 
     # removing border interfered cells
-    cell_no_border = skimage.segmentation.clear_border(cell_no_noise)
+    # cell_no_border = skimage.segmentation.clear_border(cell_no_noise)
 
-    # get segmentation info WITH cells on boundaries considered
-    cell_watershed, cell_edges, cell_colored_segmentation, cell_amount = find_contours(cell_original, cell_no_noise)
-    # get segmentation info WITHOUT cells on boundaries considered
-    cell_watershed_no_border, cell_edges_no_border, cell_colored_segmentation_no_border, cell_amount_no_border = find_contours(cell_original, cell_no_border)
-    
-    # After minus markers_color_value_offset, all of the objects color pixel will have value >= 1
-    cell_watershed_no_border = cell_watershed_no_border - markers_color_value_offset
-    cell_pixel_dict_no_border = get_object_pixel_record(cell_watershed_no_border)
-    cell_pixel_array_no_border = [v for _, v in cell_pixel_dict_no_border.items() if v >= 0]
-    cell_pixel_size_average = round(sum(cell_pixel_array_no_border) / len(cell_pixel_array_no_border))
+    # get contours
+    find_contours(cell_original, cell_no_noise)
+    # cell_watershed, cell_edges, cell_colored_segmentation, cell_amount_not_on_borders = find_contours(cell_original, cell_no_noise)
+    # # After minus markers_color_value_offset, all of the objects color pixel will have value >= 1
+    # cell_watershed = cell_watershed - markers_color_value_offset
+    # cell_pixel_dict = get_object_pixel_record(cell_watershed)
+    # cell_pixel_array = [v for _, v in cell_pixel_dict.items() if v >= 0]
+    # cell_pixel_size_average = round(sum(cell_pixel_array) / len(cell_pixel_array))
 
-    # Print cell detection result for a single image
-    all_figures = plt.figure(figsize = (13,13))
-    titles = ['cell_original','cell_no_noise','cell_edges','cell_colored_segmentation']
-    images = [cell, cell_no_noise, cell_edges, cell_colored_segmentation]
-    for i in range(4):
-        ax1 = all_figures.add_subplot(2,2,i+1)
-        if i == 3:
-            ax1.imshow(images[i])
-        else:
-            ax1.imshow(images[i], cmap="gray")
-        ax1.set_title(titles[i])
-        ax1.set_axis_off()
-    suptitle = "Cells count: " + str(cell_amount) + ", average pixel size: " + str(cell_pixel_size_average) +\
-        ", img:" + path_cell_subfolder + '.' + path_cell_name
-    plt.suptitle(suptitle)
-    plt.tight_layout()
-    output_subfolder_name = "output1-1/"
-    plt.savefig(
-        output_subfolder_name +\
-            path_cell_subfolder + '_' + path_cell_name + \
-            ", Cells count_" + str(cell_amount) + ", " + \
-            "average pixel size_" + str(cell_pixel_size_average) + '.jpg', 
-        dpi=400, 
-        format='jpg', 
-        bbox_inches='tight'
-    )
+    # # Print cell detection result for a single image
+    # all_figures = plt.figure(figsize = (13,13))
+    # titles = ['cell_original','cell_no_noise','cell_edges','cell_colored_segmentation']
+    # images = [cell, cell_no_noise, cell_edges, cell_colored_segmentation]
+    # for i in range(4):
+    #     ax1 = all_figures.add_subplot(2,2,i+1)
+    #     if i == 3:
+    #         ax1.imshow(images[i])
+    #     else:
+    #         ax1.imshow(images[i], cmap="gray")
+    #     ax1.set_title(titles[i])
+    #     ax1.set_axis_off()
+    # suptitle = "Cells count: " + str(cell_amount_not_on_borders) + ", average pixel size: " + str(cell_pixel_size_average) +\
+    #     ", img:" + path_cell_subfolder + '.' + path_cell_name
+    # plt.suptitle(suptitle)
+    # # plt.tight_layout()
+    # # output_subfolder_name = "output1-1/"
+    # # plt.savefig(
+    # #     output_subfolder_name +\
+    # #         path_cell_subfolder + '_' + path_cell_name + \
+    # #         ", Cells count_" + str(cell_amount_not_on_borders) + ", " + \
+    # #         "average pixel size_" + str(cell_pixel_size_average) + '.jpg', 
+    # #     dpi=400, 
+    # #     format='jpg', 
+    # #     bbox_inches='tight'
+    # # )
     # plt.show()
 
 def format_name_digits(number: int):
@@ -202,7 +214,7 @@ if __name__ == "__main__":
     # get_cell_segment_info(path_cell)
 
     # Do batch images segmenting
-    for i in range(0, 60):
+    for i in range(26, 27):
         path_cell_subfolder = "01"
         path_cell_name = "t" + format_name_digits(i) + ".tif"
         path_cell = str(image_src_path + path_divide + path_cell_subfolder + path_divide + path_cell_name)
