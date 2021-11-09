@@ -346,17 +346,8 @@ def get_frame_info(path_cell: str):
         segment = np.zeros_like(cell_watershed_no_border)
         segment = np.uint8(segment)
         segment[cell_watershed_no_border == label] = 255
-        # Check segment
-        # plt.title("segment")
-        # plt.imshow(segment)
-        # plt.show()
         contours, _ = cv2.findContours(segment, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        print(np.array(contours).shape)
         _, _, _, centroids = cv2.connectedComponentsWithStats(segment)
-        # Check centroids
-        # plt.title("contours")
-        # plt.imshow(contours)
-        # plt.show()
         cell = Cell(contours[0],centroids[1])
 
         # check if the cell is splitting
@@ -385,82 +376,82 @@ if __name__ == "__main__":
     # get_cell_segment_info(path_cell)
 
     # Do batch images segmenting
-    # for i in range(0, 60):
-    #     path_cell_subfolder = "01"
-    #     path_cell_name = "t" + format_name_digits(i) + ".tif"
-    #     path_cell = str(image_src_path + path_divide + path_cell_subfolder + path_divide + path_cell_name)
-    #     # get_cell_segment_info(path_cell)
-    #     now_frame = get_frame_info(path_cell)
+    for i in range(0, 60):
+        path_cell_subfolder = "01"
+        path_cell_name = "t" + format_name_digits(i) + ".tif"
+        path_cell = str(image_src_path + path_divide + path_cell_subfolder + path_divide + path_cell_name)
+        # get_cell_segment_info(path_cell)
+        now_frame = get_frame_info(path_cell)
 
-    #     # first frame
-    #     if(i == 0):
-    #         for cell in now_frame.cell_list:
-    #             register_new_cell(cell,cell_id)
-    #             cell_id += 1
-    #             now_frame.trajectory[cell.get_cell_id()].append(cell.get_centroid())
+        # first frame
+        if(i == 0):
+            for cell in now_frame.cell_list:
+                register_new_cell(cell,cell_id)
+                cell_id += 1
+                now_frame.trajectory[cell.get_cell_id()].append(cell.get_centroid())
 
-    #     # other frames
-    #     elif (i < 60):
-    #         pre_frame = frame_list[i-1]
-    #         matcher = Match(pre_frame,now_frame)
-    #         match_list = matcher.match()
+        # other frames
+        elif (i < 60):
+            pre_frame = frame_list[i-1]
+            matcher = Match(pre_frame,now_frame)
+            match_list = matcher.match()
 
-    #         list_not_match_now = []
-    #         list_match_now = []
+            list_not_match_now = []
+            list_match_now = []
 
-    #         for j in range(len(match_list)):
-    #             pre_index = match_list[j][0]
-    #             now_index = match_list[j][1]
+            for j in range(len(match_list)):
+                pre_index = match_list[j][0]
+                now_index = match_list[j][1]
 
-    #             pre_cell = pre_frame.cell_list[pre_index]
-    #             now_cell = now_frame.cell_list[now_index]
+                pre_cell = pre_frame.cell_list[pre_index]
+                now_cell = now_frame.cell_list[now_index]
 
-    #             list_match_now.append(now_index)
+                list_match_now.append(now_index)
 
-    #             if (pre_cell.underSplitting) and  (now_cell.underSplitting):
-    #                 register_new_cell(now_cell,cell_id)
-    #                 cell_id +=1
-    #                 now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
+                if (pre_cell.underSplitting) and  (now_cell.underSplitting):
+                    register_new_cell(now_cell,cell_id)
+                    cell_id +=1
+                    now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
 
-    #             else:
-    #                 now_cell.id = pre_cell.id
-    #                 now_frame.trajectory[now_cell.id] = pre_frame.trajectory[pre_cell.id].copy()
-    #                 now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
+                else:
+                    now_cell.id = pre_cell.id
+                    now_frame.trajectory[now_cell.id] = pre_frame.trajectory[pre_cell.id].copy()
+                    now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
 
-    #         list_not_match_now = set([i for i in range(len(now_frame.cell_list))]) - set(list_match_now)
+            list_not_match_now = set([i for i in range(len(now_frame.cell_list))]) - set(list_match_now)
 
-    #         for j in list_not_match_now:
-    #             now_cell = now_frame.cell_list[j]
-    #             register_new_cell(now_cell,cell_id)
-    #             cell_id += 1
-    #             now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
-    #     else:
-    #         break
+            for j in list_not_match_now:
+                now_cell = now_frame.cell_list[j]
+                register_new_cell(now_cell,cell_id)
+                cell_id += 1
+                now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
+        else:
+            break
 
-    #     frame_list.append(now_frame)
+        frame_list.append(now_frame)
 
-    # for i in range(1,20):
+    for i in range(1,20):
 
-    #     frame = frame_list[i]
-    #     for key in frame.trajectory.keys():
-    #         lines = frame.trajectory[key]
+        frame = frame_list[i]
+        for key in frame.trajectory.keys():
+            lines = frame.trajectory[key]
 
-    #         if(len(lines) > 1):
-    #             for j in range(len(lines)-1):
-    #                 x1,y1 = lines[j]
-    #                 x2,y2 = lines[j+1]
+            if(len(lines) > 1):
+                for j in range(len(lines)-1):
+                    x1,y1 = lines[j]
+                    x2,y2 = lines[j+1]
 
-    #                 cv2.line(frame.image, (int(x1), int(y1)), (int(x2), int(y2)), color_list[key], 3)
-    #         else:
-    #                 x1,y1 = lines[0]
-    #                 cv2.circle(frame.image,(int(x1),int(y1)),1,color_list[key],3)
+                    cv2.line(frame.image, (int(x1), int(y1)), (int(x2), int(y2)), color_list[key], 3)
+            else:
+                    x1,y1 = lines[0]
+                    cv2.circle(frame.image,(int(x1),int(y1)),1,color_list[key],3)
 
 
 
-    #     plt.imshow(frame.image)
+        plt.imshow(frame.image)
 
-    #     plt.title(f'plot {i}')
-    #     plt.show()
+        plt.title(f'plot {i}')
+        plt.show()
     #
 
 
@@ -468,18 +459,18 @@ if __name__ == "__main__":
     '''
     What do those SEG and TRA look like?
     '''
-    path_seg = str(image_src_path + "\\01_GT\\SEG\\man_seg015.tif")
-    path_tra = str(image_src_path + "\\01_GT\\TRA\\man_track013.tif")
-    cell_seg = cv2.imread(path_seg, -1)
-    cell_tra = cv2.imread(path_tra, -1)
+    # path_seg = str(image_src_path + "\\01_GT\\SEG\\man_seg088.tif")
+    # path_tra = str(image_src_path + "\\01_GT\\TRA\\man_track013.tif")
+    # cell_seg = cv2.imread(path_seg, -1)
+    # cell_tra = cv2.imread(path_tra, -1)
 
     # Check SEG
-    print(cell_seg.shape)
-    plt.title("cell_seg")
-    plt.imshow(cell_seg)
-    plt.show()
+    # print(cell_seg.shape)
+    # plt.title("cell_seg")
+    # plt.imshow(cell_seg)
+    # plt.show()
 
     # Check TRA
-    plt.title("cell_tra")
-    plt.imshow(cell_tra)
-    plt.show()
+    # plt.title("cell_tra")
+    # plt.imshow(cell_tra)
+    # plt.show()
