@@ -13,18 +13,20 @@ class Cell:
 
     # used for handling object information. Scalable.
 
-    split_threshold = 1.8
-
-    def __init__(self,contour,centroid,color = 0,id = -1):
+    split_threshold = 2.5
+    def __init__(self,contour,centroid,area,id = -1):
         self.contour = contour # a set of (x,y) coordinates making up  a contour
         self.id = id
+        self.area = area
         self.centroid = centroid #(x,y) co-ordinates
-        self.color = color
+
         self.underSplitting = False
 
     def get_contours(self):
         return self.contour
 
+    def get_area(self):
+        return self.area
 
     def get_cell_id(self):
         return self.id
@@ -46,7 +48,7 @@ class Cell:
         ratio = b / a
 
         if(ratio > self.split_threshold):
-            self.set_under_splitting(True)
+                self.set_under_splitting(True)
 
 
 class Frame:
@@ -59,8 +61,12 @@ class Frame:
 class Match:
 
     distance_threshold = 50 # used for normalizing & threshold
+    area_threshold = 1.5 # check out if the cell splits into small cells
     alpha_1 = 1
     alpha_2 = 0.5
+    distance_matrix = []
+    cost_matrix = []
+    child = []
 
     def __init__(self,frame_pre,frame_now):
         self.frame_pre = frame_pre
@@ -75,7 +81,7 @@ class Match:
     def set_shape_factor(self,new_factor):
         self.alpha_2 = new_factor
 
-    def cal_distance_cost(self,distance_thresh):
+    def cal_distance_cost(self):
 
         size_pre = len(self.frame_pre.cell_list)
         size_now = len(self.frame_now.cell_list)
@@ -88,30 +94,33 @@ class Match:
                 x1, y1 = self.frame_pre.cell_list[i].centroid
                 x2, y2 = self.frame_now.cell_list[j].centroid
                 distance = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
-                distance_matrix[i][j] = distance / distance_thresh if distance < distance_thresh \
+                distance_matrix[i][j] = distance / self.distance_threshold if distance < self.distance_threshold \
                     else 1
 
-        return distance_matrix
+        self.distance_matrix = distance_matrix
 
-    # def cal_cost_matrix(self):
-    #     distance_matrix = self.cal_distance_cost(self.distance_threshold)
-    #     cost_matrix = self.alpha_1 * distance_matrix
 
-        # return  cost_matrix
+    def cal_cost_matrix(self):
+        self.cal_distance_cost()
+        cost_matrix = self.alpha_1 * self.distance_matrix
+        self.cost_matrix = cost_matrix
 
     def match(self):
-        distance_matrix = self.cal_distance_cost(self.distance_threshold)
-        cost_matrix = self.alpha_1 * distance_matrix
+        self.cal_cost_matrix()
 
-        match_result = linear_sum_assignment(cost_matrix)
+        match_result = linear_sum_assignment(self.cost_matrix)
         # print(match_list)
         shape = np.shape(match_result)
         match_list = []
         for i in range(shape[1]):
             node_pre = match_result[0][i]
             node_now = match_result[1][i]
-            if(distance_matrix[node_pre][node_now] == 1):
+            pre_cell = pre_frame.cell_list[node_pre]
+            now_cell = now_frame.cell_list[node_now]
+
+            if(self.distance_matrix[node_pre][node_now] == 1):
                 continue
+
             match_list.append([node_pre,node_now])
 
         return match_list
@@ -121,6 +130,9 @@ class Match:
 frame_list = []
 color_list = []
 cell_id = 0
+max_splitting_distance = 0.5
+max_splitting_area_ratio = 1.5
+min_splitting_area_ratio = 0.4
 markers_color_value_offset = 10
 
 def get_binary(
@@ -352,22 +364,28 @@ def get_frame_info(path_cell: str):
         segment = np.uint8(segment)
         segment[cell_watershed_no_border == label] = 255
         _, contours, _ = cv2.findContours(segment, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-        _, _, _, centroids = cv2.connectedComponentsWithStats(segment)
-        cell = Cell(contours[0],centroids[1])
+        _, _, stats, centroids = cv2.connectedComponentsWithStats(segment)
+
+        cell = Cell(contours[0],centroids[1],stats[1][4])
 
         # check if the cell is splitting
         cell.if_splitting()
         frame.cell_list.append(cell)
 
     return frame
+
+
 '''
-regu
+register new cell
 '''
-def register_new_cell(cell:Cell,cell_id):
+def register_new_cell(cell:Cell):
+    global cell_id
     cell.set_cell_id(cell_id)
-    cell.color = np.random.randint(low = 0,high =255,size = 3).tolist()
+    color = np.random.randint(low = 0,high =255,size = 3).tolist()
     global color_list
-    color_list.append(cell.color)
+    color_list.append(color)
+    cell_id += 1
+
 
 if __name__ == "__main__":
     # Get image root path
@@ -391,51 +409,86 @@ if __name__ == "__main__":
         # first frame
         if(i == 0):
             for cell in now_frame.cell_list:
-                register_new_cell(cell,cell_id)
-                cell_id += 1
+                register_new_cell(cell)
                 now_frame.trajectory[cell.get_cell_id()].append(cell.get_centroid())
 
         # other frames
-        elif (i < 60):
+        elif (i < 20):
             pre_frame = frame_list[i-1]
             matcher = Match(pre_frame,now_frame)
             match_list = matcher.match()
 
+            list_not_match_pre = []
             list_not_match_now = []
+            list_match_pre = []
             list_match_now = []
 
             for j in range(len(match_list)):
                 pre_index = match_list[j][0]
                 now_index = match_list[j][1]
 
-                pre_cell = pre_frame.cell_list[pre_index]
-                now_cell = now_frame.cell_list[now_index]
-
+                list_match_pre.append(pre_index)
                 list_match_now.append(now_index)
 
-                if (pre_cell.underSplitting) and  (now_cell.underSplitting):
-                    register_new_cell(now_cell,cell_id)
-                    cell_id +=1
-                    now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
-
-                else:
-                    now_cell.id = pre_cell.id
-                    now_frame.trajectory[now_cell.id] = pre_frame.trajectory[pre_cell.id].copy()
-                    now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
-
             list_not_match_now = set([i for i in range(len(now_frame.cell_list))]) - set(list_match_now)
+            list_not_match_now = [i for i in  list_not_match_now]
+            list_not_match_pre = set([i for i in range(len(pre_frame.cell_list))]) - set(list_match_pre)
+            list_not_match_pre = [i for i in list_not_match_pre]
+            for j in range(len(list_match_now)):
 
-            for j in list_not_match_now:
-                now_cell = now_frame.cell_list[j]
-                register_new_cell(now_cell,cell_id)
-                cell_id += 1
+                match_cell_pre_index = list_match_pre[j]
+                match_cell_now_index = list_match_now[j]
+                match_cell_pre = pre_frame.cell_list[match_cell_pre_index]
+                match_cell_now = now_frame.cell_list[match_cell_now_index]
+                flag = True
+
+                for k in range(len(list_not_match_now)):
+                    distance = []
+                    cell_not_match_now_index = list_not_match_now[k]
+                    cell_not_match_now = now_frame.cell_list[cell_not_match_now_index]
+                    distance.append([cell_not_match_now_index,
+                                     matcher.distance_matrix[match_cell_pre_index][cell_not_match_now_index]])
+
+                    distance = sorted(distance,key = lambda x : x[1])
+                    area_ratio_seceond = cell_not_match_now.area / match_cell_pre.area
+                    area_ratio_first = match_cell_now.area / match_cell_pre.area
+                    if (distance[0][1] < max_splitting_distance
+                            and area_ratio_first < max_splitting_area_ratio
+                            and area_ratio_seceond < max_splitting_area_ratio):
+
+                        register_new_cell(match_cell_now)
+                        register_new_cell(cell_not_match_now)
+                        now_frame.trajectory[match_cell_now.id].append(match_cell_now.get_centroid())
+                        now_frame.trajectory[cell_not_match_now.id].append(cell_not_match_now.get_centroid())
+
+                        flag = False
+
+                        break
+
+                if (flag):
+                    match_cell_now.id = match_cell_pre.id
+                    now_frame.trajectory[match_cell_now.id] = pre_frame.trajectory[match_cell_pre.id].copy()
+                    now_frame.trajectory[match_cell_now.id].append(match_cell_now.get_centroid())
+
+
+
+
+
+
+
+            for k in list_not_match_now:
+
+                now_cell = now_frame.cell_list[k]
+                register_new_cell(now_cell)
                 now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
+
+
         else:
             break
 
         frame_list.append(now_frame)
 
-    for i in range(1,20):
+    for i in range(20):
 
         frame = frame_list[i]
         for key in frame.trajectory.keys():
@@ -451,6 +504,9 @@ if __name__ == "__main__":
                     x1,y1 = lines[0]
                     cv2.circle(frame.image,(int(x1),int(y1)),1,color_list[key],3)
 
+            # for cell in frame.cell_list:
+            #     if cell.underSplitting:
+            #         cv2.drawContours(frame.image,[cell.contour],-1,color_list[cell.id],3)
 
 
         plt.imshow(frame.image)
