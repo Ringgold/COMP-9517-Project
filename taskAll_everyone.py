@@ -9,23 +9,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import math
 import skimage.segmentation
-from skimage import color
-from pathlib import Path
 from collections import defaultdict
 from scipy.optimize import linear_sum_assignment
 from pyefd import elliptic_fourier_descriptors
-
 import imageio.core.util
-
 
 def ignore_warnings(*args, **kwargs):
     pass
 imageio.core.util._precision_warn = ignore_warnings
 
 class Cell:
-    
     # used for handling object information. Scalable.
-
     split_threshold = 2.5
     def __init__(self,contour,centroid,area,id = -1):
         self.contour = contour # a set of (x,y) coordinates making up  a contour
@@ -35,7 +29,6 @@ class Cell:
         self.missing_span = 0
         self.major = 0
         self.minor = 0
-
         self.underSplitting = False
 
     def get_contours(self):
@@ -59,27 +52,22 @@ class Cell:
     def set_under_splitting(self,flag):
         self.underSplitting = flag
 
-    def if_splitting(self):
+    def update_ellipse_info(self):
         (x,y),(a,b), angle = cv2.fitEllipse(self.contour)
         ratio = b / a
-
-        if(ratio > self.split_threshold):
-                self.set_under_splitting(True)
 
         self.major = b
         self.minor = a
 
 class Frame:
-    
-    def __init__(self, image):
+    def __init__(self, image, average_area):
         self.image = image
+        self.average_area = average_area
         self.cell_list = []
         self.trajectory = defaultdict(list)
 
 class Match:
-    
     distance_threshold = 50 # used for normalizing & threshold
-
     alpha_1 = 0.4
     alpha_2 = 0.6
     distance_matrix = []
@@ -101,10 +89,8 @@ class Match:
         self.alpha_2 = new_factor
 
     def cal_distance_cost(self):
-
         size_pre = len(self.frame_pre.cell_list)
         size_now = len(self.frame_now.cell_list)
-
         distance_matrix = np.zeros((size_pre, size_now))
 
         # Euclidean Distance
@@ -139,8 +125,6 @@ class Match:
                     similarity += np.linalg.norm(vec_pre - vec_now)
 
                 shape_matrix[i][j] = similarity
-
-
         self.shape_matrix = shape_matrix
 
     def cal_cost_matrix(self):
@@ -150,7 +134,6 @@ class Match:
                         + self.alpha_2 * self.shape_matrix
         # print(cost_matrix)
         self.cost_matrix = cost_matrix
-
 
     def match(self):
         self.cal_cost_matrix()
@@ -169,7 +152,6 @@ class Match:
                 continue
 
             match_list.append([node_pre,node_now])
-
         return match_list
     
 def get_binary(
@@ -198,17 +180,6 @@ def get_binary(
         0
     )
     return input_binary
-
-def get_reduce_noise_by_closing(input_binary: np.array, kernel_size_closing = (5,5), iterations = 5):
-    '''
-    Try dilate and erode: closing
-    1. Dilate the objects first to get rid of the noise inside each objects
-    2. Erode the objects with same degree to decrease the size to original state
-    '''
-    input_closing = input_binary.copy()
-    kernel = np.ones(kernel_size_closing,np.uint8)
-    input_closing = cv2.morphologyEx(input_closing, cv2.MORPH_CLOSE, kernel, iterations)
-    return input_closing
 
 def get_reduce_noise_by_opening(input_binary: np.array, kernel_size_opening = (7,7), iterations = 5):
     '''
@@ -247,7 +218,7 @@ def find_contours(
     1. The total amount of objects detected in the image without considering the ones on borders
     2. Need to use markers_amount - 1 since markers_amount includes the background
     '''
-    object_amount_not_on_borders = markers_amount - 1
+    # object_amount_not_on_borders = markers_amount - 1
 
     # make sure the background are not set as 0 and consider as unsured area
     markers = markers + markers_color_value_offset
@@ -261,9 +232,9 @@ def find_contours(
     edges[watershed == -1] = 1
 
     #label2rgb - Return an RGB image where color-coded labels are painted over the image.
-    colored_segmentation = color.label2rgb(watershed, bg_label=0)
+    # colored_segmentation = color.label2rgb(watershed, bg_label=0)
 
-    return watershed, edges, colored_segmentation, object_amount_not_on_borders
+    return watershed
 
 def get_object_pixel_record(object_color_array):
     # Get useful pixel values
@@ -281,70 +252,6 @@ def get_object_pixel_record(object_color_array):
             if col >= 1:
                 object_dict[col] += 1
     return object_dict
-
-def get_cell_segment_info(path_cell: str):
-    # Read as gray
-    cell_original = cv2.imread(path_cell)
-    cell = cv2.imread(path_cell, cv2.IMREAD_GRAYSCALE)
-
-    # Turn into np array first
-    cell = np.array(cell)
-
-    # Grey image to binary
-    cell_binary = get_binary(cell)
-
-    # reduce noise
-    cell_binary_opening = get_reduce_noise_by_opening(cell_binary)
-    cell_no_noise = cell_binary_opening.copy()
-
-    # removing border interfered cells
-    cell_no_border = skimage.segmentation.clear_border(cell_no_noise)
-
-    # get segmentation info WITH cells on boundaries considered
-    cell_watershed, cell_edges, cell_colored_segmentation, cell_amount = find_contours(cell_original, cell_no_noise)
-    # get segmentation info WITHOUT cells on boundaries considered
-    cell_watershed_no_border, cell_edges_no_border, cell_colored_segmentation_no_border, cell_amount_no_border = find_contours(cell_original, cell_no_border)
-    
-    # After minus markers_color_value_offset, all of the objects color pixel will have value >= 1
-    labels = np.unique(cell_watershed_no_border)
-
-    cell_watershed_no_border = cell_watershed_no_border - markers_color_value_offset
-    cell_pixel_dict_no_border = get_object_pixel_record(cell_watershed_no_border)
-    cell_pixel_array_no_border = [v for _, v in cell_pixel_dict_no_border.items() if v >= 0]
-    cell_pixel_size_average = round(sum(cell_pixel_array_no_border) / len(cell_pixel_array_no_border))
-
-
-
-
-
-
-    # Print cell detection result for a single image
-    all_figures = plt.figure(figsize = (13,13))
-    titles = ['cell_original','cell_no_noise','cell_edges','cell_colored_segmentation']
-    images = [cell, cell_no_noise, cell_edges, cell_colored_segmentation]
-    for i in range(4):
-        ax1 = all_figures.add_subplot(2,2,i+1)
-        if i == 3:
-            ax1.imshow(images[i])
-        else:
-            ax1.imshow(images[i], cmap="gray")
-        ax1.set_title(titles[i])
-        ax1.set_axis_off()
-    suptitle = "Cells count: " + str(cell_amount) + ", average pixel size: " + str(cell_pixel_size_average) +\
-        ", img:" + path_cell_subfolder + '.' + path_cell_name
-    plt.suptitle(suptitle)
-    plt.tight_layout()
-    output_subfolder_name = "output1-1/"
-    plt.savefig(
-        output_subfolder_name +\
-            path_cell_subfolder + '_' + path_cell_name + \
-            ", Cells count_" + str(cell_amount) + ", " + \
-            "average pixel size_" + str(cell_pixel_size_average) + '.jpg', 
-        dpi=400, 
-        format='jpg', 
-        bbox_inches='tight'
-    )
-    # plt.show()
 
 def format_name_digits(number: int):
     number_str = '000'
@@ -377,36 +284,36 @@ def get_frame_info(path_cell: str):
     cell_no_border = skimage.segmentation.clear_border(cell_no_noise)
 
     # get segmentation info WITH cells on boundaries considered
-    cell_watershed, cell_edges, cell_colored_segmentation, cell_amount = find_contours(cell_original, cell_no_noise)
+    cell_watershed = find_contours(cell_original, cell_no_noise)
 
     # get segmentation info WITHOUT cells on boundaries considered
-    cell_watershed_no_border, cell_edges_no_border, cell_colored_segmentation_no_border, cell_amount_no_border = find_contours(
-        cell_original, cell_no_border)
+    cell_watershed_no_border = find_contours(cell_original, cell_no_border)
 
     # After minus markers_color_value_offset, all of the objects color pixel will have value >= 1
-    labels = np.unique(cell_watershed_no_border)
-
     cell_watershed_no_border = cell_watershed_no_border - markers_color_value_offset
-
-    labels = np.unique(cell_watershed_no_border)
+    cell_pixel_dict_no_border = get_object_pixel_record(cell_watershed_no_border)
+    cell_pixel_array_no_border = [v for _, v in cell_pixel_dict_no_border.items() if v >= 0]
+    cell_pixel_size_average = round(sum(cell_pixel_array_no_border) / len(cell_pixel_array_no_border))
+    
+    # After minus markers_color_value_offset, all of the objects color pixel will have value >= 1
+    cell_watershed = cell_watershed - markers_color_value_offset
+    labels = np.unique(cell_watershed)
     cell_img = np.zeros_like(cell_no_border)
     cell_img[cell_no_border > 0] = 255
     cell_img = cv2.cvtColor(cell_img,cv2.COLOR_GRAY2RGB)
 
-    frame = Frame(cell_img)
+    frame = Frame(cell_img, cell_pixel_size_average)
     for label in labels:
         if label <= 0:
             continue
-        segment = np.zeros_like(cell_watershed_no_border)
+        segment = np.zeros_like(cell_watershed)
         segment = np.uint8(segment)
-        segment[cell_watershed_no_border == label] = 255
-        _, contours, _ = cv2.findContours(segment, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        segment[cell_watershed == label] = 255
+        contours, _ = cv2.findContours(segment, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         _, _, stats, centroids = cv2.connectedComponentsWithStats(segment)
 
         cell = Cell(np.squeeze(contours),centroids[1],stats[1][4])
-
-        # check if the cell is splitting
-        cell.if_splitting()
+        cell.update_ellipse_info()
         if(cell.area > min_area):
             frame.cell_list.append(cell)
 
@@ -459,14 +366,15 @@ max_children_ratio = 1.4    # ratio between children
 min_children_ratio = 0.71
 
 markers_color_value_offset = 10
-
+splitting_area_ratio_threshold_min = 0.6
+splitting_area_ratio_threshold_max = 0.85
+splitting_similarity_theshold = 0.7
 
 # Do batch images segmenting and tracking
 for i in range(SIZE):
     path_cell_subfolder = "01"
     path_cell_name = "t" + format_name_digits(i) + ".tif"
     path_cell = str(image_src_path + path_divide + path_cell_subfolder + path_divide + path_cell_name)
-    # get_cell_segment_info(path_cell)
     now_frame = get_frame_info(path_cell)
 
     # first frame
@@ -524,23 +432,17 @@ for i in range(SIZE):
                     break
 
         for j in range(len(list_match_now)):
-
             match_cell_pre_index = list_match_pre[j]
             match_cell_now_index = list_match_now[j]
             match_cell_pre = pre_frame.cell_list[match_cell_pre_index]
             match_cell_now = now_frame.cell_list[match_cell_now_index]
-
             # shape_matrix = matcher.shape_matrix
             # distance_matrix = matcher.distance_matrix
             # cost_matrix = matcher.cost_matrix
-
             flag = True # matched successfully
 
-
             # detecting mitosis
-
             distance = []
-
             for k in range(len(list_not_match_now)):
                 cell_not_match_now_index = list_not_match_now[k]
                 cell_not_match_now = now_frame.cell_list[cell_not_match_now_index]
@@ -557,11 +459,9 @@ for i in range(SIZE):
                 area_ratio_two_component = cell_not_match_now.area / match_cell_now.area
 
                 if (distance[0][1] <= max_searching_distance
-                        # and shape_matrix[match_cell_pre_index][match_cell_now_index] > 0.3
                         and min_children_ratio <= area_ratio_two_component <= max_children_ratio
                         and min_splitting_area_ratio <= area_ratio_first <= max_splitting_area_ratio
-                        and min_splitting_area_ratio <= area_ratio_second <= max_splitting_area_ratio
-                        ):
+                        and min_splitting_area_ratio <= area_ratio_second <= max_splitting_area_ratio):
                     register_new_cell(match_cell_now)
                     register_new_cell(cell_not_match_now)
                     now_frame.trajectory[match_cell_now.id].append(match_cell_now.get_centroid())
@@ -593,9 +493,43 @@ for i in range(SIZE):
             now_cell = now_frame.cell_list[j]
             register_new_cell(now_cell)
             now_frame.trajectory[now_cell.id].append(now_cell.get_centroid())
-
+        
+        # Add mark for deviding cells
+        if len(frame_list) >= 2:
+            pre_pre_frame = frame_list[i-2]
+            for cell_now in pre_frame.cell_list:
+                for cell_pre in pre_pre_frame.cell_list:
+                    if cell_now.id == cell_pre.id:
+                        # First check if such cell is existing in current frame
+                        exist_in_now = False
+                        for cell in now_frame.cell_list:
+                            if cell.id == cell_now.id:
+                                exist_in_now = True
+                        # Check shape similarity
+                        pre_coeffs = elliptic_fourier_descriptors(cell_pre.contour, order=8, normalize=True)
+                        now_coeffs = elliptic_fourier_descriptors(cell_now.contour, order=8, normalize=True)
+                        similarity = 0
+                        for k in range(np.shape(pre_coeffs)[0]):
+                            vec_pre = pre_coeffs[k,:]
+                            vec_now = now_coeffs[k,:]
+                            similarity += np.linalg.norm(vec_pre - vec_now)
+                        if (
+                                cell_now.area <= cell_pre.area * splitting_area_ratio_threshold_min
+                                and exist_in_now == False
+                            ):
+                            # Case 1: Area sudden decrease and the change amount is great
+                            cell_now.set_under_splitting(True)
+                            cell_pre.set_under_splitting(True)
+                        elif (
+                                cell_now.area <= cell_pre.area * splitting_area_ratio_threshold_max
+                                and similarity <= splitting_similarity_theshold
+                                and exist_in_now == False
+                            ):
+                            # Case 2: Area decrease a little, but shape is changed quite clearly
+                            cell_now.set_under_splitting(True)
+                            cell_pre.set_under_splitting(True)
+                            
     frame_list.append(now_frame)
-
 
 # draw contours, splitting markers, texts on the image of each frame
 for i in range(SIZE):
@@ -610,13 +544,13 @@ for i in range(SIZE):
             for j in range(len(lines)-1):
                 x1,y1 = lines[j]
                 x2,y2 = lines[j+1]
-                cv2.line(frame.image, (int(x1), int(y1)), (int(x2), int(y2)), color_list[key], 3)
+                cv2.line(frame.image, (int(x1), int(y1)), (int(x2), int(y2)), color_list[key], 1)
 
             # get distance traveled by cells in this frame
             j = (len(lines)-2)
             x1,y1 = lines[j]
             x2,y2 = lines[j+1]
-            cv2.line(frame.image, (int(x1), int(y1)), (int(x2), int(y2)), color_list[key], 3)
+            cv2.line(frame.image, (int(x1), int(y1)), (int(x2), int(y2)), color_list[key], 1)
             distance = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
             distance_all += distance
         else:
@@ -636,14 +570,14 @@ for i in range(SIZE):
     cell_area_all = 0
     for cell in frame.cell_list:
         cell_area_all += cell.get_area()
-        cv2.drawContours(frame.image,[cell.contour],-1,color_list[cell.id],3)
+        cv2.drawContours(frame.image,[cell.contour],-1,color_list[cell.id],2)
         # circle out the splitting cells with big thick red circle
         if cell.underSplitting:
             cv2.circle(frame.image,tuple(cell.get_centroid().astype(int)),30,(0, 0, 255),3)
     # add text for cells avg travel distance and cell area
     cv2.putText(
         frame.image,
-        'Avg travel distance: '+(str(distance_all))[:7]+' Avg cell area:'+(str(cell_area_all/len(frame.cell_list))[:7]),
+        'Avg travel distance: '+(str(distance_all))[:7]+' Avg cell area:'+str(frame.average_area),
         (450,680),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.7,
@@ -651,11 +585,7 @@ for i in range(SIZE):
         2
     )
 
-
-# display tracking animation
+# save tracking animation images
 for i in range(SIZE):
     frame = frame_list[i]
-    cv2.imshow('tracking',frame.image)
-    cv2.waitKey(300)
-
-cv2.destroyAllWindows()
+    cv2.imwrite(str('./output_final/' + str(i) + 'tracking.jpg'), frame.image)
