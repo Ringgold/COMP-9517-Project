@@ -368,7 +368,7 @@ min_children_ratio = 0.71
 markers_color_value_offset = 10
 splitting_area_ratio_threshold_min = 0.6
 splitting_area_ratio_threshold_max = 0.85
-splitting_similarity_theshold = 0.7
+splitting_similarity_theshold = 0.8
 splitting_distance_max = 50
 
 # Do batch images segmenting and tracking
@@ -498,44 +498,79 @@ for i in range(SIZE):
         # Add mark for deviding cells
         if len(frame_list) >= 2:
             pre_pre_frame = frame_list[i-2]
-            for cell_now in pre_frame.cell_list:
-                for cell_pre in pre_pre_frame.cell_list:
-                    if cell_now.id == cell_pre.id:
+            for cell_pre in pre_frame.cell_list:
+                for cell_pre_pre in pre_pre_frame.cell_list:
+                    if cell_pre.id == cell_pre_pre.id:
                         # First check if such cell is existing in current frame
                         exist_in_now = False
                         for cell in now_frame.cell_list:
-                            if cell.id == cell_now.id:
+                            if cell.id == cell_pre.id:
                                 exist_in_now = True
+                                break
                         # check if there is at least one new cell within the current splitted distance circle
-                        x1,y1 = cell_now.centroid
-                        exist_new_cell = False
+                        x1,y1 = cell_pre.centroid
+                        exist_new_cell_amount = 0
                         for cell in now_frame.cell_list:
                             x2, y2 = cell.centroid
                             distance = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
                             if distance < splitting_distance_max:
-                                exist_new_cell = True
+                                is_new_cell = True
+                                for cell_temp in pre_frame.cell_list:
+                                    if cell_temp.id == cell.id:
+                                        is_new_cell = False
+                                        break
+                                if is_new_cell == True:
+                                    exist_new_cell_amount += 1
+                                    if exist_new_cell_amount >= 2:
+                                        break
                         # Check shape similarity
-                        pre_coeffs = elliptic_fourier_descriptors(cell_pre.contour, order=8, normalize=True)
-                        now_coeffs = elliptic_fourier_descriptors(cell_now.contour, order=8, normalize=True)
+                        pre_coeffs = elliptic_fourier_descriptors(cell_pre_pre.contour, order=8, normalize=True)
+                        now_coeffs = elliptic_fourier_descriptors(cell_pre.contour, order=8, normalize=True)
                         similarity = 0
                         for k in range(np.shape(pre_coeffs)[0]):
                             vec_pre = pre_coeffs[k,:]
                             vec_now = now_coeffs[k,:]
                             similarity += np.linalg.norm(vec_pre - vec_now)
                         if (
-                                cell_now.area <= cell_pre.area * splitting_area_ratio_threshold_min
-                                and exist_in_now == False and exist_new_cell == True
+                                cell_pre.area <= cell_pre_pre.area * splitting_area_ratio_threshold_min
+                                and exist_in_now == False and exist_new_cell_amount >= 2
                             ):
                             # Case 1: Area sudden decrease and the change amount is great
-                            cell_now.set_under_splitting(True)
                             cell_pre.set_under_splitting(True)
+                            cell_pre_pre.set_under_splitting(True)
                         elif (
-                                cell_now.area <= cell_pre.area * splitting_area_ratio_threshold_max
+                                cell_pre.area <= cell_pre_pre.area * splitting_area_ratio_threshold_max
                                 and similarity <= splitting_similarity_theshold
-                                and exist_in_now == False and exist_new_cell == True
+                                and exist_in_now == False and exist_new_cell_amount >= 2
                             ):
                             # Case 2: Area decrease a little, but shape is changed quite clearly
-                            cell_now.set_under_splitting(True)
+                            cell_pre.set_under_splitting(True)
+                            cell_pre_pre.set_under_splitting(True)
+                    else:
+                        # First check if such cell is existing in current frame
+                        exist_in_now = False
+                        for cell in now_frame.cell_list:
+                            if cell.id == cell_pre.id:
+                                exist_in_now = True
+                                break
+                        # check if there is at least one new cell within the current splitted distance circle
+                        x1,y1 = cell_pre.centroid
+                        exist_new_cell_amount = 0
+                        for cell in now_frame.cell_list:
+                            x2, y2 = cell.centroid
+                            distance = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+                            if distance < splitting_distance_max:
+                                is_new_cell = True
+                                for cell_temp in pre_frame.cell_list:
+                                    if cell_temp.id == cell.id:
+                                        is_new_cell = False
+                                        break
+                                if is_new_cell == True:
+                                    exist_new_cell_amount += 1
+                                    if exist_new_cell_amount >= 2:
+                                        break
+                        if (exist_in_now == False and exist_new_cell_amount >= 2):
+                            # Case 3: the cell dividing only took one frame
                             cell_pre.set_under_splitting(True)
                             
     frame_list.append(now_frame)
