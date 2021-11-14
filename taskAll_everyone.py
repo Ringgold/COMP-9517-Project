@@ -369,6 +369,7 @@ markers_color_value_offset = 10
 splitting_area_ratio_threshold_min = 0.6
 splitting_area_ratio_threshold_max = 0.85
 splitting_similarity_theshold = 0.7
+splitting_distance_max = 50
 
 # Do batch images segmenting and tracking
 for i in range(SIZE):
@@ -505,6 +506,14 @@ for i in range(SIZE):
                         for cell in now_frame.cell_list:
                             if cell.id == cell_now.id:
                                 exist_in_now = True
+                        # check if there is at least one new cell within the current splitted distance circle
+                        x1,y1 = cell_now.centroid
+                        exist_new_cell = False
+                        for cell in now_frame.cell_list:
+                            x2, y2 = cell.centroid
+                            distance = np.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
+                            if distance < splitting_distance_max:
+                                exist_new_cell = True
                         # Check shape similarity
                         pre_coeffs = elliptic_fourier_descriptors(cell_pre.contour, order=8, normalize=True)
                         now_coeffs = elliptic_fourier_descriptors(cell_now.contour, order=8, normalize=True)
@@ -515,7 +524,7 @@ for i in range(SIZE):
                             similarity += np.linalg.norm(vec_pre - vec_now)
                         if (
                                 cell_now.area <= cell_pre.area * splitting_area_ratio_threshold_min
-                                and exist_in_now == False
+                                and exist_in_now == False and exist_new_cell == True
                             ):
                             # Case 1: Area sudden decrease and the change amount is great
                             cell_now.set_under_splitting(True)
@@ -523,7 +532,7 @@ for i in range(SIZE):
                         elif (
                                 cell_now.area <= cell_pre.area * splitting_area_ratio_threshold_max
                                 and similarity <= splitting_similarity_theshold
-                                and exist_in_now == False
+                                and exist_in_now == False and exist_new_cell == True
                             ):
                             # Case 2: Area decrease a little, but shape is changed quite clearly
                             cell_now.set_under_splitting(True)
