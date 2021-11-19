@@ -1,8 +1,4 @@
 # COMP9517 group project
-# CV2 3.4.2.17
-# numpy 1.21.2
-# skimage 0.18.3
-# matplotlib 3.4.3 
 
 import cv2
 import numpy as np
